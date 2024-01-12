@@ -4,6 +4,7 @@ import {
     COLLECTIONS_KEY,
     RULES_KEY,
     SUBS_KEY,
+    FILES_KEY,
 } from '@/constants';
 import { failed, success } from '@/restful/response';
 import { InternalServerError, ResourceNotFoundError } from '@/restful/errors';
@@ -31,6 +32,7 @@ async function produceArtifact({
     content,
     mergeSources,
     ignoreFailedRemoteSub,
+    ignoreFailedRemoteFile,
 }) {
     platform = platform || 'JSON';
 
@@ -327,6 +329,101 @@ async function produceArtifact({
         ]);
         // produce output
         return RuleUtils.produce(rules, platform);
+    } else if (type === 'file') {
+        const allFiles = $.read(FILES_KEY);
+        const file = findByName(allFiles, name);
+        if (!file) throw new Error(`找不到文件 ${name}`);
+        let raw;
+        if (content && !['localFirst', 'remoteFirst'].includes(mergeSources)) {
+            raw = content;
+        } else if (url) {
+            const errors = {};
+            raw = await Promise.all(
+                url
+                    .split(/[\r\n]+/)
+                    .map((i) => i.trim())
+                    .filter((i) => i.length)
+                    .map(async (url) => {
+                        try {
+                            return await download(url, ua || file.ua);
+                        } catch (err) {
+                            errors[url] = err;
+                            $.error(
+                                `文件 ${file.name} 的远程文件 ${url} 发生错误: ${err}`,
+                            );
+                            return '';
+                        }
+                    }),
+            );
+            let fileIgnoreFailedRemoteFile = file.ignoreFailedRemoteFile;
+            if (
+                ignoreFailedRemoteFile != null &&
+                ignoreFailedRemoteFile !== ''
+            ) {
+                fileIgnoreFailedRemoteFile = ignoreFailedRemoteFile;
+            }
+            if (!fileIgnoreFailedRemoteFile && Object.keys(errors).length > 0) {
+                throw new Error(
+                    `文件 ${file.name} 的远程文件 ${Object.keys(errors).join(
+                        ', ',
+                    )} 发生错误, 请查看日志`,
+                );
+            }
+            if (mergeSources === 'localFirst') {
+                raw.unshift(content);
+            } else if (mergeSources === 'remoteFirst') {
+                raw.push(content);
+            }
+        } else if (
+            file.source === 'local' &&
+            !['localFirst', 'remoteFirst'].includes(file.mergeSources)
+        ) {
+            raw = file.content;
+        } else {
+            const errors = {};
+            raw = await Promise.all(
+                file.url
+                    .split(/[\r\n]+/)
+                    .map((i) => i.trim())
+                    .filter((i) => i.length)
+                    .map(async (url) => {
+                        try {
+                            return await download(url, ua || file.ua);
+                        } catch (err) {
+                            errors[url] = err;
+                            $.error(
+                                `文件 ${file.name} 的远程文件 ${url} 发生错误: ${err}`,
+                            );
+                            return '';
+                        }
+                    }),
+            );
+            let fileIgnoreFailedRemoteFile = file.ignoreFailedRemoteFile;
+            if (
+                ignoreFailedRemoteFile != null &&
+                ignoreFailedRemoteFile !== ''
+            ) {
+                fileIgnoreFailedRemoteFile = ignoreFailedRemoteFile;
+            }
+            if (!fileIgnoreFailedRemoteFile && Object.keys(errors).length > 0) {
+                throw new Error(
+                    `文件 ${file.name} 的远程文件 ${Object.keys(errors).join(
+                        ', ',
+                    )} 发生错误, 请查看日志`,
+                );
+            }
+            if (file.mergeSources === 'localFirst') {
+                raw.unshift(file.content);
+            } else if (file.mergeSources === 'remoteFirst') {
+                raw.push(file.content);
+            }
+        }
+        let content = (Array.isArray(raw) ? raw : [raw])
+            .flat()
+            .filter((i) => i != null && i !== '')
+            .join('\n');
+        content = await ProxyUtils.process(content, file.process || []);
+        return content ?? '';
     }
 }
 
