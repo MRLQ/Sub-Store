@@ -20,7 +20,7 @@ export function getPlatformFromHeaders(headers) {
     } else if (UA.indexOf('Decar') !== -1 || UA.indexOf('Loon') !== -1) {
         return 'Loon';
     } else if (UA.indexOf('Shadowrocket') !== -1) {
-        return 'ShadowRocket';
+        return 'Shadowrocket';
     } else if (UA.indexOf('Stash') !== -1) {
         return 'Stash';
     } else if (
@@ -32,6 +32,8 @@ export function getPlatformFromHeaders(headers) {
         return 'Clash';
     } else if (ua.indexOf('v2ray') !== -1) {
         return 'V2Ray';
+    } else if (ua.indexOf('sing-box') !== -1) {
+        return 'sing-box';
     } else {
         return 'JSON';
     }

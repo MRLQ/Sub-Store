@@ -7,8 +7,15 @@ import lodash from 'lodash';
 import $ from '@/core/app';
 import { hex_md5 } from '@/vendor/md5';
 import { ProxyUtils } from '@/core/proxy-utils';
+import { produceArtifact } from '@/restful/sync';
+
 import env from '@/utils/env';
-import { getFlowHeaders, parseFlowHeaders, flowTransfer } from '@/utils/flow';
+import {
+    getFlowField,
+    getFlowHeaders,
+    parseFlowHeaders,
+    flowTransfer,
+} from '@/utils/flow';
 
 /**
  The rule "(name CONTAINS "🇨🇳") AND (port IN [80, 443])" can be expressed as follows:
@@ -317,19 +324,19 @@ function ScriptOperator(script, targetPlatform, $arguments, source) {
                 const operator = createDynamicFunction(
                     'operator',
                     `async function operator(input = []) {
-                        let proxies
-                        if (Array.isArray(input)) {
-                            proxies = input
-                            return proxies.map(($server = {}) => {
-                                ${script}
-                                return $server
-                            })
-                        } else {
-                            let $content = input
+                        if (input?.$files || input?.$content) {
+                            let { $content, $files } = input
                             ${script}
-                            return $content
+                            return { $content, $files }
+                        } else {
+                            let proxies = input
+                            let list = []
+                            for await (let $server of proxies) {
+                                ${script}
+                                list.push($server)
+                            }
+                            return list
                         }
-                        
                       }`,
                     $arguments,
                 );
@@ -619,10 +626,16 @@ function ScriptFilter(script, targetPlatform, $arguments, source) {
             await (async function () {
                 const filter = createDynamicFunction(
                     'filter',
-                    `async function filter(proxies = []) {
-                        return proxies.filter(($server = {}) => {
-                          ${script}
-                        })
+                    `async function filter(input = []) {
+                        let proxies = input
+                        let list = []
+                        const fn = async ($server) => {
+                            ${script}
+                        }
+                        for await (let $server of proxies) {
+                            list.push(await fn($server))
+                        }
+                        return list
                       }`,
                     $arguments,
                 );
@@ -658,20 +671,21 @@ async function ApplyFilter(filter, objs) {
     try {
         selected = await filter.func(objs);
     } catch (err) {
-        // print log and skip this filter
-        $.error(`Cannot apply filter ${filter.name}\n Reason: ${err}`);
         let funcErr = '';
         let funcErrMsg = `${err.message ?? err}`;
         if (funcErrMsg.includes('$server is not defined')) {
             funcErr = '';
         } else {
+            $.error(
+                `Cannot apply filter ${filter.name}(function filter)! Reason: ${err}`,
+            );
             funcErr = `执行 function filter 失败 ${funcErrMsg}; `;
         }
         try {
             selected = await filter.nodeFunc(objs);
         } catch (err) {
             $.error(
-                `Cannot apply filter ${filter.name}(node script)! Reason: ${err}`,
+                `Cannot apply filter ${filter.name}(shortcut script)! Reason: ${err}`,
             );
             let nodeErr = '';
             let nodeErrMsg = `${err.message ?? err}`;
@@ -679,7 +693,7 @@ async function ApplyFilter(filter, objs) {
                 nodeErr = '';
                 funcErr = `执行失败 ${funcErrMsg}`;
             } else {
-                nodeErr = `执行节点快捷过滤脚本 失败 ${nodeErr}`;
+                nodeErr = `执行快捷过滤脚本 失败 ${nodeErrMsg}`;
             }
             throw new Error(`脚本过滤 ${funcErr}${nodeErr}`);
         }
@@ -693,17 +707,20 @@ async function ApplyOperator(operator, objs) {
         const output_ = await operator.func(output);
         if (output_) output = output_;
     } catch (err) {
-        $.error(
-            `Cannot apply operator ${operator.name}(function operator)! Reason: ${err}`,
-        );
         let funcErr = '';
         let funcErrMsg = `${err.message ?? err}`;
         if (
             funcErrMsg.includes('$server is not defined') ||
-            funcErrMsg.includes('$content is not defined')
+            funcErrMsg.includes('$content is not defined') ||
+            funcErrMsg.includes('$files is not defined') ||
+            output?.$files ||
+            output?.$content
         ) {
             funcErr = '';
         } else {
+            $.error(
+                `Cannot apply operator ${operator.name}(function operator)! Reason: ${err}`,
+            );
             funcErr = `执行 function operator 失败 ${funcErrMsg}; `;
         }
         try {
@@ -711,7 +728,7 @@ async function ApplyOperator(operator, objs) {
             if (output_) output = output_;
         } catch (err) {
             $.error(
-                `Cannot apply operator ${operator.name}(node script)! Reason: ${err}`,
+                `Cannot apply operator ${operator.name}(shortcut script)! Reason: ${err}`,
             );
             let nodeErr = '';
             let nodeErrMsg = `${err.message ?? err}`;
@@ -719,7 +736,7 @@ async function ApplyOperator(operator, objs) {
                 nodeErr = '';
                 funcErr = `执行失败 ${funcErrMsg}`;
             } else {
-                nodeErr = `执行节点快捷脚本 失败 ${nodeErr}`;
+                nodeErr = `执行快捷脚本 失败 ${nodeErrMsg}`;
             }
             throw new Error(`脚本操作 ${funcErr}${nodeErr}`);
         }
@@ -769,7 +786,12 @@ function removeFlag(str) {
 }
 
 function createDynamicFunction(name, script, $arguments) {
-    const flowUtils = { getFlowHeaders, parseFlowHeaders, flowTransfer };
+    const flowUtils = {
+        getFlowField,
+        getFlowHeaders,
+        parseFlowHeaders,
+        flowTransfer,
+    };
     if ($.env.isLoon) {
         return new Function(
             '$arguments',
@@ -781,6 +803,7 @@ function createDynamicFunction(name, script, $arguments) {
             'ProxyUtils',
             'scriptResourceCache',
             'flowUtils',
+            'produceArtifact',
             `${script}\n return ${name}`,
         )(
             $arguments,
@@ -795,6 +818,7 @@ function createDynamicFunction(name, script, $arguments) {
             ProxyUtils,
             scriptResourceCache,
             flowUtils,
+            produceArtifact,
         );
     } else {
         return new Function(
@@ -804,8 +828,17 @@ function createDynamicFunction(name, script, $arguments) {
             'ProxyUtils',
             'scriptResourceCache',
             'flowUtils',
+            'produceArtifact',
 
             `${script}\n return ${name}`,
-        )($arguments, $, lodash, ProxyUtils, scriptResourceCache, flowUtils);
+        )(
+            $arguments,
+            $,
+            lodash,
+            ProxyUtils,
+            scriptResourceCache,
+            flowUtils,
+            produceArtifact,
+        );
     }
 }

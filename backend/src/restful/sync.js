@@ -33,12 +33,15 @@ async function produceArtifact({
     mergeSources,
     ignoreFailedRemoteSub,
     ignoreFailedRemoteFile,
+    produceType,
+    produceOpts = {},
 }) {
     platform = platform || 'JSON';
 
     if (type === 'subscription') {
         const allSubs = $.read(SUBS_KEY);
         const sub = findByName(allSubs, name);
+        if (!sub) throw new Error(`找不到订阅 ${name}`);
         let raw;
         if (content && !['localFirst', 'remoteFirst'].includes(mergeSources)) {
             raw = content;
@@ -154,11 +157,12 @@ async function produceArtifact({
             exist[proxy.name] = true;
         }
         // produce
-        return ProxyUtils.produce(proxies, platform);
+        return ProxyUtils.produce(proxies, platform, produceType, produceOpts);
     } else if (type === 'collection') {
         const allSubs = $.read(SUBS_KEY);
         const allCols = $.read(COLLECTIONS_KEY);
         const collection = findByName(allCols, name);
+        if (!collection) throw new Error(`找不到组合订阅 ${name}`);
         const subnames = collection.subscriptions;
         const results = {};
         const errors = {};
@@ -301,10 +305,11 @@ async function produceArtifact({
             }
             exist[proxy.name] = true;
         }
-        return ProxyUtils.produce(proxies, platform);
+        return ProxyUtils.produce(proxies, platform, produceType, produceOpts);
     } else if (type === 'rule') {
         const allRules = $.read(RULES_KEY);
         const rule = findByName(allRules, name);
+        if (!rule) throw new Error(`找不到规则 ${name}`);
         let rules = [];
         for (let i = 0; i < rule.urls.length; i++) {
             const url = rule.urls[i];
@@ -418,16 +423,25 @@ async function produceArtifact({
                 raw.push(file.content);
             }
         }
-        let content = (Array.isArray(raw) ? raw : [raw])
-            .flat()
+        const files = (Array.isArray(raw) ? raw : [raw]).flat();
+        let filesContent = files
             .filter((i) => i != null && i !== '')
             .join('\n');
-        content = await ProxyUtils.process(content, file.process || []);
-        return content ?? '';
+
+        // apply processors
+        const processed =
+            Array.isArray(file.process) && file.process.length > 0
+                ? await ProxyUtils.process(
+                      { $files: files, $content: filesContent },
+                      file.process,
+                  )
+                : { $content: filesContent, $files: files };
+
+        return processed?.$content ?? '';
     }
 }
 
-async function syncAllArtifacts(_, res) {
+async function syncArtifacts() {
     $.info('开始同步所有远程配置...');
     const allArtifacts = $.read(ARTIFACTS_KEY);
     const files = {};
@@ -466,6 +480,15 @@ async function syncAllArtifacts(_, res) {
 
         $.write(allArtifacts, ARTIFACTS_KEY);
         $.info('全部订阅同步成功！');
+    } catch (e) {
+        $.error(`同步订阅失败，原因：${e.message ?? e}`);
+        throw e;
+    }
+}
+async function syncAllArtifacts(_, res) {
+    $.info('开始同步所有远程配置...');
+    try {
+        await syncArtifacts();
         success(res);
     } catch (err) {
         failed(
@@ -539,4 +562,4 @@ async function syncArtifact(req, res) {
     }
 }
 
-export { produceArtifact };
+export { produceArtifact, syncArtifacts };
