@@ -447,22 +447,43 @@ async function syncArtifacts() {
     const files = {};
 
     try {
+        const invalid = [];
         await Promise.all(
             allArtifacts.map(async (artifact) => {
-                if (artifact.sync) {
-                    $.info(`正在同步云配置：${artifact.name}...`);
-                    const output = await produceArtifact({
-                        type: artifact.type,
-                        name: artifact.source,
-                        platform: artifact.platform,
-                    });
+                try {
+                    if (artifact.sync && artifact.source) {
+                        $.info(`正在同步云配置：${artifact.name}...`);
+                        const output = await produceArtifact({
+                            type: artifact.type,
+                            name: artifact.source,
+                            platform: artifact.platform,
+                            produceOpts: {
+                                'include-unsupported-proxy':
+                                    artifact.includeUnsupportedProxy,
+                            },
+                        });
 
-                    files[artifact.name] = {
-                        content: output,
-                    };
+                        // if (!output || output.length === 0)
+                        //     throw new Error('该配置的结果为空 不进行上传');
+
+                        files[encodeURIComponent(artifact.name)] = {
+                            content: output,
+                        };
+                    }
+                } catch (e) {
+                    $.error(
+                        `同步配置 ${artifact.name} 发生错误: ${e.message ?? e}`,
+                    );
+                    invalid.push(artifact.name);
                 }
             }),
         );
+
+        if (invalid.length > 0) {
+            throw new Error(
+                `同步配置 ${invalid.join(', ')} 发生错误 详情请查看日志`,
+            );
+        }
 
         const resp = await syncToGist(files);
         const body = JSON.parse(resp.body);
@@ -471,10 +492,9 @@ async function syncArtifacts() {
             if (artifact.sync) {
                 artifact.updated = new Date().getTime();
                 // extract real url from gist
-                artifact.url = body.files[artifact.name].raw_url.replace(
-                    /\/raw\/[^/]*\/(.*)/,
-                    '/raw/$1',
-                );
+                artifact.url = body.files[
+                    encodeURIComponent(artifact.name)
+                ]?.raw_url.replace(/\/raw\/[^/]*\/(.*)/, '/raw/$1');
             }
         }
 
@@ -490,16 +510,16 @@ async function syncAllArtifacts(_, res) {
     try {
         await syncArtifacts();
         success(res);
-    } catch (err) {
+    } catch (e) {
+        $.error(`同步订阅失败，原因：${e.message ?? e}`);
         failed(
             res,
             new InternalServerError(
                 `FAILED_TO_SYNC_ARTIFACTS`,
                 `Failed to sync all artifacts`,
-                `Reason: ${err}`,
+                `Reason: ${e.message ?? e}`,
             ),
         );
-        $.info(`同步订阅失败，原因：${err}`);
     }
 }
 
@@ -516,7 +536,20 @@ async function syncArtifact(req, res) {
             res,
             new ResourceNotFoundError(
                 'RESOURCE_NOT_FOUND',
-                `Artifact ${name} does not exist!`,
+                `找不到远程配置 ${name}`,
+            ),
+            404,
+        );
+        return;
+    }
+
+    if (!artifact.source) {
+        $.error(`远程配置 ${name} 未设置来源`);
+        failed(
+            res,
+            new ResourceNotFoundError(
+                'RESOURCE_HAS_NO_SOURCE',
+                `远程配置 ${name} 未设置来源`,
             ),
             404,
         );
@@ -528,6 +561,9 @@ async function syncArtifact(req, res) {
             type: artifact.type,
             name: artifact.source,
             platform: artifact.platform,
+            produceOpts: {
+                'include-unsupported-proxy': artifact.includeUnsupportedProxy,
+            },
         });
 
         $.info(
@@ -537,6 +573,8 @@ async function syncArtifact(req, res) {
                 2,
             )}`,
         );
+        // if (!output || output.length === 0)
+        //     throw new Error('该配置的结果为空 不进行上传');
         const resp = await syncToGist({
             [encodeURIComponent(artifact.name)]: {
                 content: output,
@@ -546,11 +584,11 @@ async function syncArtifact(req, res) {
         const body = JSON.parse(resp.body);
         artifact.url = body.files[
             encodeURIComponent(artifact.name)
-        ].raw_url.replace(/\/raw\/[^/]*\/(.*)/, '/raw/$1');
+        ]?.raw_url.replace(/\/raw\/[^/]*\/(.*)/, '/raw/$1');
         $.write(allArtifacts, ARTIFACTS_KEY);
         success(res, artifact);
     } catch (err) {
-        $.error(`远程配置 ${artifact.name} 发生错误: ${err}`);
+        $.error(`远程配置 ${artifact.name} 发生错误: ${err.message ?? err}`);
         failed(
             res,
             new InternalServerError(

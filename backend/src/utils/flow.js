@@ -9,9 +9,11 @@ export function getFlowField(headers) {
     )[0];
     return headers[subkey];
 }
-export async function getFlowHeaders(url, ua, timeout) {
+export async function getFlowHeaders(rawUrl, ua, timeout) {
+    let url = rawUrl;
     let $arguments = {};
     const rawArgs = url.split('#');
+    url = url.split('#')[0];
     if (rawArgs.length > 1) {
         try {
             // 支持 `#${encodeURIComponent(JSON.stringify({arg1: "1"}))}`
@@ -28,10 +30,13 @@ export async function getFlowHeaders(url, ua, timeout) {
             }
         }
     }
+    if ($arguments?.noFlow) {
+        return;
+    }
     const cached = headersResourceCache.get(url);
     let flowInfo;
     if (!$arguments?.noCache && cached) {
-        $.info(`使用缓存的流量信息: ${url}`);
+        // $.info(`使用缓存的流量信息: ${url}`);
         flowInfo = cached;
     } else {
         const { defaultFlowUserAgent, defaultTimeout } = $.read(SETTINGS_KEY);
@@ -42,7 +47,7 @@ export async function getFlowHeaders(url, ua, timeout) {
         const requestTimeout = timeout || defaultTimeout;
         const http = HTTP();
         try {
-            $.info(`使用 HEAD 方法获取流量信息: ${url}`);
+            // $.info(`使用 HEAD 方法获取流量信息: ${url}`);
             const { headers } = await http.head({
                 url: url
                     .split(/[\r\n]+/)
