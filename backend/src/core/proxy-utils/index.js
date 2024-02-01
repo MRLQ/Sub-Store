@@ -1,4 +1,4 @@
-import YAML from 'static-js-yaml';
+import YAML from '@/utils/yaml';
 import download from '@/utils/download';
 import { isIPv4, isIPv6, isValidPortNumber } from '@/utils';
 import PROXY_PROCESSORS, { ApplyProcessor } from './processors';
@@ -237,6 +237,7 @@ function lastParse(proxy) {
         delete proxy['ws-path'];
         delete proxy['ws-headers'];
     }
+
     if (proxy.type === 'trojan') {
         if (proxy.network === 'tcp') {
             delete proxy.network;
@@ -253,9 +254,24 @@ function lastParse(proxy) {
     if (proxy.network) {
         let transportHost = proxy[`${proxy.network}-opts`]?.headers?.Host;
         let transporthost = proxy[`${proxy.network}-opts`]?.headers?.host;
-        if (transporthost && !transportHost) {
+        if (proxy.network === 'h2') {
+            if (!transporthost && transportHost) {
+                proxy[`${proxy.network}-opts`].headers.host = transportHost;
+                delete proxy[`${proxy.network}-opts`].headers.Host;
+            }
+        } else if (transporthost && !transportHost) {
             proxy[`${proxy.network}-opts`].headers.Host = transporthost;
             delete proxy[`${proxy.network}-opts`].headers.host;
+        }
+    }
+    if (proxy.network === 'h2') {
+        const host = proxy['h2-opts']?.headers?.host;
+        const path = proxy['h2-opts']?.path;
+        if (host && !Array.isArray(host)) {
+            proxy['h2-opts'].headers.host = [host];
+        }
+        if (Array.isArray(path)) {
+            proxy['h2-opts'].path = path[0];
         }
     }
     if (proxy.tls && !proxy.sni) {

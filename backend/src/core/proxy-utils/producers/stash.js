@@ -207,6 +207,31 @@ export default function Stash_Producer() {
                     }
                 }
                 if (
+                    ['vmess', 'vless'].includes(proxy.type) &&
+                    proxy.network === 'h2'
+                ) {
+                    let path = proxy['h2-opts']?.path;
+                    if (
+                        isPresent(proxy, 'h2-opts.path') &&
+                        Array.isArray(path)
+                    ) {
+                        proxy['h2-opts'].path = path[0];
+                    }
+                    let host = proxy['h2-opts']?.headers?.host;
+                    if (
+                        isPresent(proxy, 'h2-opts.headers.Host') &&
+                        !Array.isArray(host)
+                    ) {
+                        proxy['h2-opts'].headers.host = [host];
+                    }
+                }
+                if (proxy['plugin-opts']?.tls) {
+                    if (isPresent(proxy, 'skip-cert-verify')) {
+                        proxy['plugin-opts']['skip-cert-verify'] =
+                            proxy['skip-cert-verify'];
+                    }
+                }
+                if (
                     ['trojan', 'tuic', 'hysteria', 'hysteria2'].includes(
                         proxy.type,
                     )
@@ -217,6 +242,9 @@ export default function Stash_Producer() {
                     proxy.fingerprint = proxy['tls-fingerprint'];
                 }
                 delete proxy['tls-fingerprint'];
+                if (isPresent(proxy, 'tls') && typeof proxy.tls !== 'boolean') {
+                    delete proxy.tls;
+                }
 
                 if (proxy['test-url']) {
                     proxy['benchmark-url'] = proxy['test-url'];

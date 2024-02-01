@@ -32,8 +32,27 @@ function URI_SS() {
         // handle IPV4 and IPV6
         let serverAndPortArray = content.match(/@([^/]*)(\/|$)/);
         let userInfoStr = Base64.decode(content.split('@')[0]);
+        let query = '';
         if (!serverAndPortArray) {
+            if (content.includes('?')) {
+                const parsed = content.match(/^(.*)(\?.*)$/);
+                content = parsed[1];
+                query = parsed[2];
+            }
             content = Base64.decode(content);
+            if (query) {
+                if (/(&|\?)v2ray-plugin=/.test(query)) {
+                    const parsed = query.match(/(&|\?)v2ray-plugin=(.*?)(&|$)/);
+                    let v2rayPlugin = parsed[2];
+                    if (v2rayPlugin) {
+                        proxy.plugin = 'v2ray-plugin';
+                        proxy['plugin-opts'] = JSON.parse(
+                            Base64.decode(v2rayPlugin),
+                        );
+                    }
+                }
+                content = `${content}${query}`;
+            }
             userInfoStr = content.split('@')[0];
             serverAndPortArray = content.match(/@([^/]*)(\/|$)/);
         }
@@ -70,7 +89,7 @@ function URI_SS() {
                     };
                     break;
                 case 'v2ray-plugin':
-                    proxy.obfs = 'v2ray-plugin';
+                    proxy.plugin = 'v2ray-plugin';
                     proxy['plugin-opts'] = {
                         mode: 'websocket',
                         host: getIfNotBlank(params['obfs-host']),
@@ -83,6 +102,12 @@ function URI_SS() {
                         `Unsupported plugin option: ${params.plugin}`,
                     );
             }
+        }
+        if (/(&|\?)uot=(1|true)/i.test(query)) {
+            proxy['udp-over-tcp'] = true;
+        }
+        if (/(&|\?)tfo=(1|true)/i.test(query)) {
+            proxy.tfo = true;
         }
         return proxy;
     };
@@ -416,16 +441,31 @@ function URI_VLESS() {
         if (!proxy.network && isShadowrocket && params.obfs) {
             proxy.network = params.obfs;
         }
+        if (['websocket'].includes(proxy.network)) {
+            proxy.network = 'ws';
+        }
         if (proxy.network && !['tcp', 'none'].includes(proxy.network)) {
             const opts = {};
-            if (params.host) {
-                opts.headers = { Host: params.host };
+            const host = params.host ?? params.obfsParam;
+            if (host) {
+                if (params.obfsParam) {
+                    try {
+                        const parsed = JSON.parse(host);
+                        opts.headers = parsed;
+                    } catch (e) {
+                        opts.headers = { Host: host };
+                    }
+                } else {
+                    opts.headers = { Host: host };
+                }
             }
             if (params.serviceName) {
                 opts[`${proxy.network}-service-name`] = params.serviceName;
             } else if (isShadowrocket && params.path) {
-                opts[`${proxy.network}-service-name`] = params.path;
-                delete params.path;
+                if (!['ws', 'http', 'h2'].includes(proxy.network)) {
+                    opts[`${proxy.network}-service-name`] = params.path;
+                    delete params.path;
+                }
             }
             if (params.path) {
                 opts.path = params.path;
