@@ -87,12 +87,15 @@ function QuickSettingOperator(args) {
             if (get(args.useless)) {
                 const filter = UselessFilter();
                 const selected = filter.func(proxies);
-                proxies.filter((_, i) => selected[i]);
+                proxies = proxies.filter(
+                    (p, i) => selected[i] && p.port > 0 && p.port <= 65535,
+                );
             }
 
             return proxies.map((proxy) => {
                 proxy.udp = get(args.udp, proxy.udp);
                 proxy.tfo = get(args.tfo, proxy.tfo);
+                proxy['fast-open'] = get(args.tfo, proxy['fast-open']);
                 proxy['skip-cert-verify'] = get(
                     args.scert,
                     proxy['skip-cert-verify'],
@@ -510,7 +513,7 @@ function ResolveDomainOperator({ provider, type, filter }) {
 
             return proxies.filter((p) => {
                 if (filter === 'removeFailed') {
-                    return p['no-resolve'] || p.resolved;
+                    return isIP(p.server) || p['no-resolve'] || p.resolved;
                 } else if (filter === 'IPOnly') {
                     return isIP(p.server);
                 } else if (filter === 'IPv4Only') {

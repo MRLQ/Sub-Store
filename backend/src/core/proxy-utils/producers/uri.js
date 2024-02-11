@@ -6,6 +6,11 @@ export default function URI_Producer() {
     const type = 'SINGLE';
     const produce = (proxy) => {
         let result = '';
+        delete proxy.subName;
+        delete proxy.collectionName;
+        if (['trojan', 'tuic', 'hysteria', 'hysteria2'].includes(proxy.type)) {
+            delete proxy.tls;
+        }
         if (proxy.server && isIPv6(proxy.server)) {
             proxy.server = `[${proxy.server}]`;
         }
@@ -197,9 +202,9 @@ export default function URI_Producer() {
 
                 result = `vless://${proxy.uuid}@${proxy.server}:${
                     proxy.port
-                }?${vlessTransport}&security=${encodeURIComponent(
+                }?security=${encodeURIComponent(
                     security,
-                )}${alpn}${allowInsecure}${sni}${fp}${flow}${sid}${pbk}#${encodeURIComponent(
+                )}${vlessTransport}${alpn}${allowInsecure}${sni}${fp}${flow}${sid}${pbk}#${encodeURIComponent(
                     proxy.name,
                 )}`;
                 break;
@@ -285,6 +290,119 @@ export default function URI_Producer() {
                     '&',
                 )}#${encodeURIComponent(proxy.name)}`;
                 break;
+            case 'hysteria':
+                let hysteriaParams = [];
+                Object.keys(proxy).forEach((key) => {
+                    if (!['name', 'type', 'server', 'port'].includes(key)) {
+                        const i = key.replace(/-/, '_');
+                        if (['alpn'].includes(key)) {
+                            if (proxy[key]) {
+                                hysteriaParams.push(
+                                    `${i}=${encodeURIComponent(
+                                        Array.isArray(proxy[key])
+                                            ? proxy[key][0]
+                                            : proxy[key],
+                                    )}`,
+                                );
+                            }
+                        } else if (['skip-cert-verify'].includes(key)) {
+                            if (proxy[key]) {
+                                hysteriaParams.push(`insecure=1`);
+                            }
+                        } else if (['tfo', 'fast-open'].includes(key)) {
+                            if (
+                                proxy[key] &&
+                                !hysteriaParams.includes('fastopen=1')
+                            ) {
+                                hysteriaParams.push(`fastopen=1`);
+                            }
+                        } else if (['ports'].includes(key)) {
+                            hysteriaParams.push(`mport=${proxy[key]}`);
+                        } else if (['auth-str'].includes(key)) {
+                            hysteriaParams.push(`auth=${proxy[key]}`);
+                        } else if (['up'].includes(key)) {
+                            hysteriaParams.push(`upmbps=${proxy[key]}`);
+                        } else if (['down'].includes(key)) {
+                            hysteriaParams.push(`downmbps=${proxy[key]}`);
+                        } else if (['_obfs'].includes(key)) {
+                            hysteriaParams.push(`obfs=${proxy[key]}`);
+                        } else if (['obfs'].includes(key)) {
+                            hysteriaParams.push(`obfsParam=${proxy[key]}`);
+                        } else if (['sni'].includes(key)) {
+                            hysteriaParams.push(`peer=${proxy[key]}`);
+                        } else if (proxy[key]) {
+                            hysteriaParams.push(
+                                `${i}=${encodeURIComponent(proxy[key])}`,
+                            );
+                        }
+                    }
+                });
+
+                result = `hysteria://${proxy.server}:${
+                    proxy.port
+                }?${hysteriaParams.join('&')}#${encodeURIComponent(
+                    proxy.name,
+                )}`;
+                break;
+
+            case 'tuic':
+                if (!proxy.token || proxy.token.length === 0) {
+                    let tuicParams = [];
+                    Object.keys(proxy).forEach((key) => {
+                        if (
+                            ![
+                                'name',
+                                'type',
+                                'uuid',
+                                'password',
+                                'server',
+                                'port',
+                            ].includes(key)
+                        ) {
+                            const i = key.replace(/-/, '_');
+                            if (['alpn'].includes(key)) {
+                                if (proxy[key]) {
+                                    tuicParams.push(
+                                        `${i}=${encodeURIComponent(
+                                            Array.isArray(proxy[key])
+                                                ? proxy[key][0]
+                                                : proxy[key],
+                                        )}`,
+                                    );
+                                }
+                            } else if (['skip-cert-verify'].includes(key)) {
+                                if (proxy[key]) {
+                                    tuicParams.push(`allow_insecure=1`);
+                                }
+                            } else if (['tfo', 'fast-open'].includes(key)) {
+                                if (
+                                    proxy[key] &&
+                                    !tuicParams.includes('fast_open=1')
+                                ) {
+                                    tuicParams.push(`fast_open=1`);
+                                }
+                            } else if (
+                                ['disable-sni', 'reduce-rtt'].includes(key) &&
+                                proxy[key]
+                            ) {
+                                tuicParams.push(`${i}=1`);
+                            } else if (proxy[key]) {
+                                tuicParams.push(
+                                    `${i}=${encodeURIComponent(proxy[key])}`,
+                                );
+                            }
+                        }
+                    });
+
+                    result = `tuic://${encodeURIComponent(
+                        proxy.uuid,
+                    )}:${encodeURIComponent(proxy.password)}@${proxy.server}:${
+                        proxy.port
+                    }?${tuicParams.join('&')}#${encodeURIComponent(
+                        proxy.name,
+                    )}`;
+                    break;
+                }
         }
         return result;
     };
