@@ -9,7 +9,7 @@ const RULE_TYPES_MAPPING = [
     [/^(IN|SRC)-PORT$/, 'IN-PORT'],
     [/^PROTOCOL$/, 'PROTOCOL'],
     [/^IP-CIDR$/i, 'IP-CIDR'],
-    [/^(IP-CIDR6|ip6-cidr|IP6-CIDR)$/],
+    [/^(IP-CIDR6|ip6-cidr|IP6-CIDR)$/, 'IP-CIDR6'],
 ];
 
 function AllRuleParser() {
