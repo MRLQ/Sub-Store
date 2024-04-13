@@ -622,7 +622,7 @@ const wireguardParser = (proxy = {}) => {
         throw 'invalid port';
     if (proxy['fast-open']) parsedProxy.udp_fragment = true;
     if (typeof proxy.reserved === 'string') {
-        parsedProxy.reserved.push(proxy.reserved);
+        parsedProxy.reserved = proxy.reserved;
     } else if (Array.isArray(proxy.reserved)) {
         for (const r of proxy.reserved) parsedProxy.reserved.push(r);
     } else {
@@ -789,7 +789,9 @@ export default function singbox_Producer() {
                     $.error(e.message ?? e);
                 }
             });
-        return type === 'internal' ? list : JSON.stringify(list, null, 2);
+        return type === 'internal'
+            ? list
+            : JSON.stringify({ outbounds: list }, null, 2);
     };
     return { type, produce };
 }
