@@ -219,7 +219,7 @@ function produce(proxies, targetPlatform, type, opts = {}) {
     $.log(`Producing proxies for target: ${targetPlatform}`);
     if (typeof producer.type === 'undefined' || producer.type === 'SINGLE') {
         let localPort = 10000;
-        const list = proxies
+        let list = proxies
             .map((proxy) => {
                 try {
                     let line = producer.produce(proxy, type, opts);
@@ -245,7 +245,18 @@ function produce(proxies, targetPlatform, type, opts = {}) {
                 }
             })
             .filter((line) => line.length > 0);
-        return type === 'internal' ? list : list.join('\n');
+        list = type === 'internal' ? list : list.join('\n');
+        if (
+            targetPlatform.startsWith('Surge') &&
+            proxies.length > 0 &&
+            proxies.every((p) => p.type === 'wireguard')
+        ) {
+            list = `#!name=${proxies[0]?.subName}
+#!desc=${proxies[0]?._desc ?? ''}
+#!category=${proxies[0]?._category ?? ''}
+${list}`;
+        }
+        return list;
     } else if (producer.type === 'ALL') {
         return producer.produce(proxies, type, opts);
     }
@@ -404,15 +415,19 @@ function lastParse(proxy) {
         }
     }
     if (typeof proxy.name !== 'string') {
-        try {
-            if (proxy.name?.data) {
-                proxy.name = Buffer.from(proxy.name.data).toString('utf8');
-            } else {
-                proxy.name = utf8ArrayToStr(proxy.name);
+        if (/^\d+$/.test(proxy.name)) {
+            proxy.name = `${proxy.name}`;
+        } else {
+            try {
+                if (proxy.name?.data) {
+                    proxy.name = Buffer.from(proxy.name.data).toString('utf8');
+                } else {
+                    proxy.name = utf8ArrayToStr(proxy.name);
+                }
+            } catch (e) {
+                $.error(`proxy.name decode failed\nReason: ${e}`);
+                proxy.name = `${proxy.type} ${proxy.server}:${proxy.port}`;
             }
-        } catch (e) {
-            $.error(`proxy.name decode failed\nReason: ${e}`);
-            proxy.name = `${proxy.type} ${proxy.server}:${proxy.port}`;
         }
     }
     if (['', 'off'].includes(proxy.sni)) {
