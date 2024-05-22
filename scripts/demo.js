@@ -39,6 +39,7 @@ function operator(proxies = [], targetPlatform, context) {
   //     yaml, // yaml 解析和生成
   //     getFlag, // 获取 emoji 旗帜
   //     getISO, // 获取 ISO 3166-1 alpha-2 代码
+  //     Gist, // Gist 类
   // }
 
   // 示例: 给节点名添加前缀
@@ -93,6 +94,11 @@ function operator(proxies = [], targetPlatform, context) {
   //     platform: 'ClashMeta',
   //     produceType: 'internal' // 'internal' produces an Array, otherwise produces a String( ProxyUtils.yaml.safeLoad('YAML String').proxies )
   // })
+
+  // 4. 一个比较折腾的方案: 在脚本操作中, 把内容同步到另一个 gist
+  // 见 https://t.me/zhetengsha/1428
+  // 
+  // const content = ProxyUtils.produce(proxies, platform)
 
   // // YAML
   // ProxyUtils.yaml.load('YAML String')

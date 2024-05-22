@@ -26,7 +26,7 @@ export default function URI_Producer() {
                 const userinfo = `${proxy.cipher}:${proxy.password}`;
                 result = `ss://${Base64.encode(userinfo)}@${proxy.server}:${
                     proxy.port
-                }/`;
+                }${proxy.plugin ? '/' : ''}`;
                 if (proxy.plugin) {
                     result += '?plugin=';
                     const opts = proxy['plugin-opts'];
@@ -55,7 +55,9 @@ export default function URI_Producer() {
                     result = `${result}${proxy.plugin ? '&' : '?'}uot=1`;
                 }
                 if (proxy.tfo) {
-                    result = `${result}${proxy.plugin ? '&' : '?'}tfo=1`;
+                    result = `${result}${
+                        proxy.plugin || proxy['udp-over-tcp'] ? '&' : '?'
+                    }tfo=1`;
                 }
                 result += `#${encodeURIComponent(proxy.name)}`;
                 break;
@@ -82,6 +84,11 @@ export default function URI_Producer() {
                 if (proxy.network === 'http') {
                     net = 'tcp';
                     type = 'http';
+                } else if (
+                    proxy.network === 'ws' &&
+                    proxy['ws-opts']?.['v2ray-http-upgrade']
+                ) {
+                    net = 'httpupgrade';
                 }
                 result = {
                     v: '2',
@@ -170,9 +177,15 @@ export default function URI_Producer() {
                 if (proxy.flow) {
                     flow = `&flow=${encodeURIComponent(proxy.flow)}`;
                 }
-                let vlessTransport = `&type=${encodeURIComponent(
-                    proxy.network,
-                )}`;
+                let vlessType = proxy.network;
+                if (
+                    proxy.network === 'ws' &&
+                    proxy['ws-opts']?.['v2ray-http-upgrade']
+                ) {
+                    vlessType = 'httpupgrade';
+                }
+
+                let vlessTransport = `&type=${encodeURIComponent(vlessType)}`;
                 if (['grpc'].includes(proxy.network)) {
                     // https://github.com/XTLS/Xray-core/issues/91
                     vlessTransport += `&mode=${encodeURIComponent(
@@ -218,7 +231,14 @@ export default function URI_Producer() {
             case 'trojan':
                 let trojanTransport = '';
                 if (proxy.network) {
-                    trojanTransport = `&type=${proxy.network}`;
+                    let trojanType = proxy.network;
+                    if (
+                        proxy.network === 'ws' &&
+                        proxy['ws-opts']?.['v2ray-http-upgrade']
+                    ) {
+                        trojanType = 'httpupgrade';
+                    }
+                    trojanTransport = `&type=${encodeURIComponent(trojanType)}`;
                     if (['grpc'].includes(proxy.network)) {
                         let trojanTransportServiceName =
                             proxy[`${proxy.network}-opts`]?.[
