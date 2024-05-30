@@ -340,6 +340,8 @@ function URI_VMess() {
                         transportPath = Array.isArray(transportPath)
                             ? transportPath[0]
                             : transportPath;
+                    } else {
+                        transportPath = '/';
                     }
                 }
                 if (transportPath || transportHost) {
@@ -851,6 +853,9 @@ function Clash_All() {
             }
         }
 
+        if (proxy['server-cert-fingerprint']) {
+            proxy['tls-fingerprint'] = proxy['server-cert-fingerprint'];
+        }
         if (proxy.fingerprint) {
             proxy['tls-fingerprint'] = proxy.fingerprint;
         }
