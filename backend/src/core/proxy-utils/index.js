@@ -15,7 +15,7 @@ import $ from '@/core/app';
 import { FILES_KEY, MODULES_KEY } from '@/constants';
 import { findByName } from '@/utils/database';
 import { produceArtifact } from '@/restful/sync';
-import { getFlag, getISO, MMDB } from '@/utils/geo';
+import { getFlag, removeFlag, getISO, MMDB } from '@/utils/geo';
 import Gist from '@/utils/gist';
 
 function preprocess(raw) {
@@ -83,7 +83,7 @@ async function processFn(proxies, operators = [], targetPlatform, source) {
             const { mode, content } = item.args;
             if (mode === 'link') {
                 let noCache;
-                let url = content;
+                let url = content || '';
                 if (url.endsWith('#noCache')) {
                     url = url.replace(/#noCache$/, '');
                     noCache = true;
@@ -276,6 +276,7 @@ export const ProxyUtils = {
     isIP,
     yaml: YAML,
     getFlag,
+    removeFlag,
     getISO,
     MMDB,
     Gist,
@@ -435,6 +436,24 @@ function lastParse(proxy) {
                 $.error(`proxy.name decode failed\nReason: ${e}`);
                 proxy.name = `${proxy.type} ${proxy.server}:${proxy.port}`;
             }
+        }
+    }
+    if (['ws', 'http', 'h2'].includes(proxy.network)) {
+        if (
+            ['ws', 'h2'].includes(proxy.network) &&
+            !proxy[`${proxy.network}-opts`]?.path
+        ) {
+            proxy[`${proxy.network}-opts`] =
+                proxy[`${proxy.network}-opts`] || {};
+            proxy[`${proxy.network}-opts`].path = '/';
+        } else if (
+            proxy.network === 'http' &&
+            (!Array.isArray(proxy[`${proxy.network}-opts`]?.path) ||
+                proxy[`${proxy.network}-opts`]?.path.every((i) => !i))
+        ) {
+            proxy[`${proxy.network}-opts`] =
+                proxy[`${proxy.network}-opts`] || {};
+            proxy[`${proxy.network}-opts`].path = ['/'];
         }
     }
     if (['', 'off'].includes(proxy.sni)) {
