@@ -2,7 +2,14 @@ import { Buffer } from 'buffer';
 import rs from '@/utils/rs';
 import YAML from '@/utils/yaml';
 import download from '@/utils/download';
-import { isIPv4, isIPv6, isValidPortNumber, isNotBlank } from '@/utils';
+import {
+    isIPv4,
+    isIPv6,
+    isValidPortNumber,
+    isNotBlank,
+    ipAddress,
+    getRandomPort,
+} from '@/utils';
 import PROXY_PROCESSORS, { ApplyProcessor } from './processors';
 import PROXY_PREPROCESSORS from './preprocessors';
 import PROXY_PRODUCERS from './producers';
@@ -214,6 +221,17 @@ function produce(proxies, targetPlatform, type, opts = {}) {
                 delete proxy['tls-fingerprint'];
             }
         }
+
+        // 处理 端口跳跃
+        if (proxy.ports) {
+            if (!['ClashMeta'].includes(targetPlatform)) {
+                proxy.ports = proxy.ports.replace(/\//g, ',');
+            }
+            if (!proxy.port) {
+                proxy.port = getRandomPort(proxy.ports);
+            }
+        }
+
         return proxy;
     });
 
@@ -267,6 +285,8 @@ export const ProxyUtils = {
     parse,
     process: processFn,
     produce,
+    ipAddress,
+    getRandomPort,
     isIPv4,
     isIPv6,
     isIP,
@@ -406,6 +426,15 @@ function lastParse(proxy) {
     }
     if (['hysteria', 'hysteria2'].includes(proxy.type) && !proxy.ports) {
         delete proxy.ports;
+    }
+    if (
+        ['hysteria2'].includes(proxy.type) &&
+        proxy.obfs &&
+        !['salamander'].includes(proxy.obfs) &&
+        !proxy['obfs-password']
+    ) {
+        proxy['obfs-password'] = proxy.obfs;
+        proxy.obfs = 'salamander';
     }
     if (['vless'].includes(proxy.type)) {
         // 删除 reality-opts: {}

@@ -1,3 +1,4 @@
+import * as ipAddress from 'ip-address';
 // source: https://stackoverflow.com/a/36760050
 const IPV4_REGEX = /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)(\.(?!$)|$)){4}$/;
 
@@ -93,7 +94,25 @@ function getPolicyDescriptor(str) {
 //               };
 //           })();
 
+function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getRandomPort(portString) {
+    let portParts = portString.split(/,|\//);
+    let randomPart = portParts[Math.floor(Math.random() * portParts.length)];
+    if (randomPart.includes('-')) {
+        let [min, max] = randomPart.split('-').map(Number);
+        return getRandomInt(min, max);
+    } else {
+        return Number(randomPart);
+    }
+}
+
 export {
+    ipAddress,
     isIPv4,
     isIPv6,
     isValidPortNumber,
@@ -103,4 +122,5 @@ export {
     getIfPresent,
     // utf8ArrayToStr,
     getPolicyDescriptor,
+    getRandomPort,
 };
