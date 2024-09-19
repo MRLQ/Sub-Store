@@ -9,6 +9,7 @@ import {
     isNotBlank,
     ipAddress,
     getRandomPort,
+    numberToString,
 } from '@/utils';
 import PROXY_PROCESSORS, { ApplyProcessor } from './processors';
 import PROXY_PREPROCESSORS from './preprocessors';
@@ -77,7 +78,13 @@ function parse(raw) {
     return proxies;
 }
 
-async function processFn(proxies, operators = [], targetPlatform, source) {
+async function processFn(
+    proxies,
+    operators = [],
+    targetPlatform,
+    source,
+    $options,
+) {
     for (const item of operators) {
         // process script
         let script;
@@ -176,6 +183,7 @@ async function processFn(proxies, operators = [], targetPlatform, source) {
                 targetPlatform,
                 $arguments,
                 source,
+                $options,
             );
         } else {
             processor = PROXY_PROCESSORS[item.type](item.args || {});
@@ -202,8 +210,6 @@ function produce(proxies, targetPlatform, type, opts = {}) {
     );
 
     proxies = proxies.map((proxy) => {
-        proxy._subName = proxy.subName;
-        proxy._collectionName = proxy.collectionName;
         proxy._resolved = proxy.resolved;
 
         if (!isNotBlank(proxy.name)) {
@@ -224,6 +230,7 @@ function produce(proxies, targetPlatform, type, opts = {}) {
 
         // 处理 端口跳跃
         if (proxy.ports) {
+            proxy.ports = String(proxy.ports);
             if (!['ClashMeta'].includes(targetPlatform)) {
                 proxy.ports = proxy.ports.replace(/\//g, ',');
             }
@@ -237,21 +244,10 @@ function produce(proxies, targetPlatform, type, opts = {}) {
 
     $.log(`Producing proxies for target: ${targetPlatform}`);
     if (typeof producer.type === 'undefined' || producer.type === 'SINGLE') {
-        let localPort = 10000;
         let list = proxies
             .map((proxy) => {
                 try {
-                    let line = producer.produce(proxy, type, opts);
-                    if (
-                        line.length > 0 &&
-                        line.includes('__SubStoreLocalPort__')
-                    ) {
-                        line = line.replace(
-                            /__SubStoreLocalPort__/g,
-                            localPort++,
-                        );
-                    }
-                    return line;
+                    return producer.produce(proxy, type, opts);
                 } catch (err) {
                     $.error(
                         `Cannot produce proxy: ${JSON.stringify(
@@ -270,7 +266,7 @@ function produce(proxies, targetPlatform, type, opts = {}) {
             proxies.length > 0 &&
             proxies.every((p) => p.type === 'wireguard')
         ) {
-            list = `#!name=${proxies[0]?.subName}
+            list = `#!name=${proxies[0]?._subName}
 #!desc=${proxies[0]?._desc ?? ''}
 #!category=${proxies[0]?._category ?? ''}
 ${list}`;
@@ -316,7 +312,23 @@ function safeMatch(parser, line) {
     }
 }
 
+function formatTransportPath(path) {
+    if (typeof path === 'string' || typeof path === 'number') {
+        path = String(path).trim();
+
+        if (path === '') {
+            return '/';
+        } else if (!path.startsWith('/')) {
+            return '/' + path;
+        }
+    }
+    return path;
+}
+
 function lastParse(proxy) {
+    if (typeof proxy.password === 'number') {
+        proxy.password = numberToString(proxy.password);
+    }
     if (proxy.interface) {
         proxy['interface-name'] = proxy.interface;
         delete proxy.interface;
@@ -342,6 +354,17 @@ function lastParse(proxy) {
         }
         delete proxy['ws-path'];
         delete proxy['ws-headers'];
+    }
+
+    const transportPath = proxy[`${proxy.network}-opts`]?.path;
+
+    if (Array.isArray(transportPath)) {
+        proxy[`${proxy.network}-opts`].path = transportPath.map((item) =>
+            formatTransportPath(item),
+        );
+    } else if (transportPath != null) {
+        proxy[`${proxy.network}-opts`].path =
+            formatTransportPath(transportPath);
     }
 
     if (proxy.type === 'trojan') {
@@ -424,9 +447,13 @@ function lastParse(proxy) {
             proxy[`${proxy.network}-opts`].path = [transportPath];
         }
     }
-    if (['hysteria', 'hysteria2'].includes(proxy.type) && !proxy.ports) {
+    // if (['hysteria', 'hysteria2', 'tuic'].includes(proxy.type)) {
+    if (proxy.ports) {
+        proxy.ports = String(proxy.ports).replace(/\//g, ',');
+    } else {
         delete proxy.ports;
     }
+    // }
     if (
         ['hysteria2'].includes(proxy.type) &&
         proxy.obfs &&

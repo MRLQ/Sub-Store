@@ -37,6 +37,7 @@ async function produceArtifact({
     produceOpts = {},
     subscription,
     awaitCustomCache,
+    $options,
 }) {
     platform = platform || 'JSON';
 
@@ -150,7 +151,8 @@ async function produceArtifact({
             .flat();
 
         proxies.forEach((proxy) => {
-            proxy.subName = sub.name;
+            proxy._subName = sub.name;
+            proxy._subDisplayName = sub.displayName;
         });
         // apply processors
         proxies = await ProxyUtils.process(
@@ -158,6 +160,7 @@ async function produceArtifact({
             sub.process || [],
             platform,
             { [sub.name]: sub },
+            $options,
         );
         if (proxies.length === 0) {
             throw new Error(`订阅 ${name} 中不含有效节点`);
@@ -250,8 +253,10 @@ async function produceArtifact({
                         .flat();
 
                     currentProxies.forEach((proxy) => {
-                        proxy.subName = sub.name;
-                        proxy.collectionName = collection.name;
+                        proxy._subName = sub.name;
+                        proxy._subDisplayName = sub.displayName;
+                        proxy._collectionName = collection.name;
+                        proxy._collectionDisplayName = collection.displayName;
                     });
 
                     // apply processors
@@ -259,7 +264,11 @@ async function produceArtifact({
                         currentProxies,
                         sub.process || [],
                         platform,
-                        { [sub.name]: sub, _collection: collection },
+                        {
+                            [sub.name]: sub,
+                            _collection: collection,
+                            $options,
+                        },
                     );
                     results[name] = currentProxies;
                     processed++;
@@ -303,7 +312,8 @@ async function produceArtifact({
         );
 
         proxies.forEach((proxy) => {
-            proxy.collectionName = collection.name;
+            proxy._collectionName = collection.name;
+            proxy._collectionDisplayName = collection.displayName;
         });
 
         // apply own processors
@@ -312,6 +322,7 @@ async function produceArtifact({
             collection.process || [],
             platform,
             { _collection: collection },
+            $options,
         );
         if (proxies.length === 0) {
             throw new Error(`组合订阅 ${name} 中不含有效节点`);
@@ -333,6 +344,7 @@ async function produceArtifact({
             }
             exist[proxy.name] = true;
         }
+        console.log(proxies);
         return ProxyUtils.produce(proxies, platform, produceType, produceOpts);
     } else if (type === 'rule') {
         const allRules = $.read(RULES_KEY);
@@ -460,10 +472,10 @@ async function produceArtifact({
         const processed =
             Array.isArray(file.process) && file.process.length > 0
                 ? await ProxyUtils.process(
-                      { $files: files, $content: filesContent },
+                      { $files: files, $content: filesContent, $options },
                       file.process,
                   )
-                : { $content: filesContent, $files: files };
+                : { $content: filesContent, $files: files, $options };
 
         return processed?.$content ?? '';
     }
